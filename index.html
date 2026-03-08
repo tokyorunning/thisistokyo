@@ -1,1 +1,713 @@
+<!DOCTYPE html>
+<html lang="ko">
 
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOKYO RUNNING. - 도쿄를 달리고 기록합니다</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & Babel CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Firebase SDKs (Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+
+        body {
+            font-family: 'Inter', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+            background-color: #f8fafc;
+            margin: 0;
+            padding: 0;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .gm-style-iw {
+            border-radius: 20px !important;
+            padding: 0 !important;
+        }
+
+        /* Modal Animation */
+        @keyframes modalEnter {
+            from {
+                opacity: 0;
+                transform: scale(0.95) translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        .animate-modal {
+            animation: modalEnter 0.4s ease-out forwards;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- 1. Firebase Initial Config ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBvExMe_qX0K7HMQD60E7iZ2hmdIm_h8Ys",
+            authDomain: "thisistokyo-783a4.firebaseapp.com",
+            projectId: "thisistokyo-783a4",
+            storageBucket: "thisistokyo-783a4.firebasestorage.app",
+            messagingSenderId: "713839683678",
+            appId: "1:713839683678:web:16d7a13e4acb029817eccf",
+            measurementId: "G-SCB08ZB3X4"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'this-is-tokyo-running';
+
+        // Paths (Rule 1)
+        const ROUTES_PATH = `artifacts/${appId}/public/data/routes`;
+        const SETTINGS_PATH = `artifacts/${appId}/public/data/settings/global`;
+        const ADMIN_PATH = `artifacts/${appId}/public/data/settings/admin`;
+
+        /**
+         * Icon Wrapper: CDN Lucide 아이콘을 리액트에서 안전하게 사용
+         */
+        const Icon = ({ name, size = 24, className = "", color = "currentColor", fill = "none" }) => {
+            const spanRef = useRef(null);
+            useEffect(() => {
+                const renderIcon = () => {
+                    if (spanRef.current && window.lucide) {
+                        spanRef.current.innerHTML = `<i data-lucide="${name}"></i>`;
+                        window.lucide.createIcons({ root: spanRef.current });
+                        const svg = spanRef.current.querySelector('svg');
+                        if (svg) {
+                            svg.style.width = typeof size === 'number' ? `${size}px` : size;
+                            svg.style.height = typeof size === 'number' ? `${size}px` : size;
+                            svg.style.color = color;
+                            svg.style.fill = fill;
+                            if (className) svg.setAttribute('class', `inline-block align-middle ${className}`);
+                        }
+                    }
+                };
+                renderIcon();
+                if (!window.lucide) {
+                    const checkLucide = setInterval(() => {
+                        if (window.lucide) { clearInterval(checkLucide); renderIcon(); }
+                    }, 50);
+                    return () => clearInterval(checkLucide);
+                }
+            }, [name, size, className, color, fill]);
+            return <span ref={spanRef} style={{ display: 'inline-flex', verticalAlign: 'middle', justifyContent: 'center', alignItems: 'center' }}></span>;
+        };
+
+        const translations = {
+            ko: {
+                heroSub: "도쿄를 달리고 기록합니다",
+                mapLoading: "러닝 맵을 렌더링하는 중...",
+                announcement: "NOTICE",
+                allCourses: "RUNNING ROUTES",
+                courseSub: "테마별로 큐레이션된 도쿄의 러닝 코스",
+                shareTitle: "SHARE THIS ROUTE",
+                copyLink: "URL Copy",
+                viewOnYoutube: "WATCH ON YOUTUBE",
+                copied: "✅ URL이 복사되었습니다!",
+                adminOn: "🛠️ Admin Dashboard",
+                adminOff: "🛠️ Admin Logout",
+                courseStats: { dist: "거리", diff: "난이도" },
+                themes: { All: "전체", City: "시티", Nature: "자연", Park: "공원", Night: "야간", Training: "장거리", Morning: "아침", Race: "대회", Overseas: "해외" }
+            },
+            ja: {
+                heroSub: "東京を走り、記録する",
+                mapLoading: "マップを読み込み中...",
+                announcement: "お知らせ",
+                allCourses: "RUNNING ROUTES",
+                courseSub: "テーマ別に厳選されたランニングコース",
+                shareTitle: "SHARE THIS ROUTE",
+                copyLink: "URL Copy",
+                viewOnYoutube: "YouTubeで視聴する",
+                copied: "✅ URLをコピーしました!",
+                adminOn: "🛠️ Admin Dashboard",
+                adminOff: "🛠️ Logout",
+                courseStats: { dist: "距離", diff: "難易度" },
+                themes: { All: "すべて", City: "シティ", Nature: "自然", Park: "公園", Night: "ナイト", Training: "ロング", Morning: "朝", Race: "大会", Overseas: "海外" }
+            }
+        };
+
+        // --- 별점 컴포넌트 ---
+        const StarRating = ({ rating, size = 16, color = "text-orange-500" }) => (
+            <div className="flex gap-0.5">
+                {[1, 2, 3, 4, 5].map((s) => (
+                    <Icon key={s} name="star" size={size} color={s <= rating ? "#f97316" : "#cbd5e1"} fill={s <= rating ? "#f97316" : "none"} />
+                ))}
+            </div>
+        );
+
+        const InteractiveStarRating = ({ rating, onChange, size = 24 }) => (
+            <div className="flex gap-1 cursor-pointer">
+                {[1, 2, 3, 4, 5].map((s) => (
+                    <div key={s} onClick={() => onChange(s)} className="hover:scale-110 transition-transform">
+                        <Icon name="star" size={size} color={s <= rating ? "#f97316" : "#475569"} fill={s <= rating ? "#f97316" : "none"} />
+                    </div>
+                ))}
+            </div>
+        );
+
+        function App() {
+            const [lang, setLang] = useState('ko');
+            const [routes, setRoutes] = useState([]);
+            const [selectedRoute, setSelectedRoute] = useState(null);
+            const [activeFilter, setActiveFilter] = useState('All');
+            const [isMenuOpen, setIsMenuOpen] = useState(false);
+            const [shareMessage, setShareMessage] = useState('');
+            const [scrolled, setScrolled] = useState(false);
+
+            // 관리자 모드
+            const [isAdmin, setIsAdmin] = useState(false);
+            const [showLoginModal, setShowLoginModal] = useState(false);
+            const [loginEmail, setLoginEmail] = useState('');
+            const [loginPassword, setLoginPassword] = useState('');
+            const [loginError, setLoginError] = useState('');
+
+            // 구글 지도
+            const [googleApiKey, setGoogleApiKey] = useState('');
+            const [isMapLoaded, setIsMapLoaded] = useState(false);
+            const [mapError, setMapError] = useState('');
+
+            // 데이터 상태
+            const [notices, setNotices] = useState([{ text_ko: "데이터 로딩 중...", createdAt: new Date().toISOString() }]);
+            const [isAddingNotice, setIsAddingNotice] = useState(false);
+            const [newNoticeForm, setNewNoticeForm] = useState({ text_ko: '', text_ja: '' });
+            const [youtubeUrl, setYoutubeUrl] = useState('');
+            const [isFetchingInfo, setIsFetchingInfo] = useState(false);
+            const [newRouteForm, setNewRouteForm] = useState({ title_ko: '', title_ja: '', location_ko: '', location_ja: '', description_ko: '', description_ja: '', lat: '', lng: '', videoId: '', thumbnail: '', themes: [], distance: '', difficulty: 3 });
+
+            const mapRef = useRef(null);
+            const googleMapInstance = useRef(null);
+            const markersRef = useRef([]);
+            const t = translations[lang];
+
+            const handleCopyLink = () => {
+                navigator.clipboard.writeText(window.location.href).then(() => {
+                    setShareMessage(t.copyLink + ' OK!');
+                    setTimeout(() => setShareMessage(''), 2000);
+                }).catch(err => {
+                    console.error("Failed to copy link: ", err);
+                });
+            };
+
+            // 1. Auth & Real-time Listeners (Rule 3)
+            useEffect(() => {
+                const init = async () => {
+                    try {
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await auth.signInWithCustomToken(__initial_auth_token);
+                        } else {
+                            await auth.signInAnonymously();
+                        }
+                    } catch (e) { console.error("Firebase Login Fail"); }
+
+                    // Listeners
+                    db.doc(SETTINGS_PATH).onSnapshot(doc => {
+                        if (doc.exists) {
+                            const data = doc.data();
+                            if (data.notices && Array.isArray(data.notices)) {
+                                setNotices(data.notices);
+                            } else if (data.text_ko) { // Backward compatibility
+                                setNotices([{ text_ko: data.text_ko, text_ja: data.text_ja, createdAt: data.createdAt }]);
+                            }
+                            if (data.mapsApiKey) setGoogleApiKey(data.mapsApiKey);
+                        }
+                    });
+                    db.collection(ROUTES_PATH).onSnapshot(snap => {
+                        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        data.sort((a, b) => new Date(b.date) - new Date(a.date)); // Rule 2: Memory Sort
+                        setRoutes(data);
+                    });
+                };
+                init();
+
+                const onScroll = () => setScrolled(window.scrollY > 20);
+                window.addEventListener('scroll', onScroll);
+                return () => window.removeEventListener('scroll', onScroll);
+            }, []);
+
+            // 2. Map Script Loading (Depends on API Key & Language Toggle)
+            useEffect(() => {
+                if (!googleApiKey) return;
+
+                // 1. Clean up existing map script and instance if it exists (for language switching)
+                if (window.google && window.google.maps) {
+                    const oldScripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
+                    oldScripts.forEach(s => s.remove());
+                    delete window.google;
+                    setIsMapLoaded(false);
+                    googleMapInstance.current = null;
+                }
+
+                // 2. Inject new script with current language parameter
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${googleApiKey}&language=${lang}`;
+                script.async = true;
+                script.onload = () => setIsMapLoaded(true);
+                script.onerror = () => setMapError("Google Maps Key Error");
+                document.head.appendChild(script);
+
+                return () => {
+                    script.remove();
+                };
+            }, [googleApiKey, lang]);
+
+            // 3. Map Instance
+            useEffect(() => {
+                if (isMapLoaded && mapRef.current && !googleMapInstance.current) {
+                    googleMapInstance.current = new window.google.maps.Map(mapRef.current, {
+                        center: { lat: 35.6895, lng: 139.6917 }, zoom: 9,
+                        mapTypeControl: false, streetViewControl: false,
+                    });
+                }
+            }, [isMapLoaded]);
+
+            // 4. Markers
+            useEffect(() => {
+                if (googleMapInstance.current) {
+                    markersRef.current.forEach(m => m.setMap(null));
+                    markersRef.current = [];
+                    routes.forEach(route => {
+                        // Protect against missing themes array in old data
+                        const themes = route.themes || [];
+                        if (activeFilter !== 'All' && !themes.includes(activeFilter)) return;
+                        const marker = new window.google.maps.Marker({
+                            position: { lat: Number(route.lat), lng: Number(route.lng) },
+                            map: googleMapInstance.current,
+                            icon: { path: 0, scale: 10, fillColor: selectedRoute?.id === route.id ? "#fb923c" : "#3b82f6", fillOpacity: 1, strokeWeight: 3, strokeColor: "#ffffff" }
+                        });
+                        marker.addListener('click', () => setSelectedRoute(route));
+                        markersRef.current.push(marker);
+                    });
+                }
+            }, [routes, selectedRoute, activeFilter, isMapLoaded]);
+
+            // 5. Preview Marker
+            const previewMarkerRef = useRef(null);
+            useEffect(() => {
+                if (googleMapInstance.current && newRouteForm.lat && newRouteForm.lng) {
+                    const lat = Number(newRouteForm.lat);
+                    const lng = Number(newRouteForm.lng);
+                    if (!isNaN(lat) && !isNaN(lng)) {
+                        if (!previewMarkerRef.current) {
+                            previewMarkerRef.current = new window.google.maps.Marker({
+                                map: googleMapInstance.current,
+                                icon: { path: 0, scale: 12, fillColor: "#22c55e", fillOpacity: 1, strokeWeight: 4, strokeColor: "#ffffff" },
+                                zIndex: 999
+                            });
+                        }
+                        previewMarkerRef.current.setPosition({ lat, lng });
+                        googleMapInstance.current.panTo({ lat, lng });
+                        googleMapInstance.current.setZoom(14);
+                    }
+                } else if (previewMarkerRef.current) {
+                    previewMarkerRef.current.setMap(null);
+                    previewMarkerRef.current = null;
+                }
+            }, [newRouteForm.lat, newRouteForm.lng, isMapLoaded]);
+
+            // --- Handlers ---
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                try {
+                    const adminDoc = await db.doc(ADMIN_PATH).get();
+                    if (adminDoc.exists) {
+                        const adminData = adminDoc.data();
+                        if (loginEmail === adminData.email && loginPassword === adminData.password) {
+                            setIsAdmin(true); setShowLoginModal(false); setLoginError('');
+                        } else {
+                            setLoginError('ID/PW 불일치');
+                        }
+                    } else {
+                        // DB에 관리자 정보가 없을 경우 초기 세팅
+                        await db.doc(ADMIN_PATH).set({
+                            email: 'admin@thisistokyo.net',
+                            password: 'admin' // 테스트를 위한 초기 비밀번호
+                        });
+                        setLoginError('DB에 관리자 계정이 배포되었습니다. 다시 로그인 해 주세요.');
+                    }
+                } catch (error) {
+                    setLoginError('DB 확인 중 오류가 발생했습니다.');
+                    console.error('Login Error:', error);
+                }
+            };
+
+            const handleFetchYT = async () => {
+                if (!googleApiKey) return alert("API Key Required");
+                setIsFetchingInfo(true);
+                try {
+                    const vid = youtubeUrl.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/)?.[1];
+                    const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${vid}&key=${googleApiKey}`);
+                    const data = await res.json();
+                    const snippet = data.items[0].snippet;
+                    const desc = snippet.description;
+                    const coord = desc.match(/Coordinates:\s*(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)/i);
+                    const dist = desc.match(/Distance:\s*([\d.]+\s*(?:km|m)?)/i);
+                    const loc = desc.match(/Location:\s*(.+)/i);
+                    setNewRouteForm({ ...newRouteForm, title_ko: snippet.title, title_ja: snippet.title, description_ko: desc, description_ja: desc, lat: coord?.[1] || "", lng: coord?.[3] || "", distance: dist?.[1] || "", location_ko: loc?.[1]?.trim() || "", location_ja: loc?.[1]?.trim() || "", videoId: vid, thumbnail: snippet.thumbnails?.high?.url });
+                } catch (e) { alert("Fetch Fail"); } finally { setIsFetchingInfo(false); }
+            };
+
+            const handleThemeToggle = (themeKey) => {
+                const currentThemes = newRouteForm.themes;
+                if (currentThemes.includes(themeKey)) {
+                    setNewRouteForm({ ...newRouteForm, themes: currentThemes.filter(t => t !== themeKey) });
+                } else {
+                    if (currentThemes.length >= 3) {
+                        alert("최대 3개의 테마만 선택 가능합니다. (Max 3 themes allowed)");
+                        return;
+                    }
+                    setNewRouteForm({ ...newRouteForm, themes: [...currentThemes, themeKey] });
+                }
+            };
+
+            const handleAdd = async () => {
+                if (!newRouteForm.lat || !newRouteForm.title_ko) return alert("Missing required fields (Coordinates or Title)");
+                await db.collection(ROUTES_PATH).add({ ...newRouteForm, date: new Date().toISOString() });
+                setNewRouteForm({ title_ko: '', title_ja: '', location_ko: '', location_ja: '', description_ko: '', description_ja: '', lat: '', lng: '', videoId: '', thumbnail: '', themes: [], distance: '', difficulty: 3 });
+                setYoutubeUrl('');
+            };
+
+            const formatDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}`; };
+            const formatDateTime = (iso) => {
+                if (!iso) return "";
+                const d = new Date(iso);
+                return `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+            };
+            const isNew = (iso) => (new Date() - new Date(iso)) / 86400000 <= 3;
+            const filteredRoutes = activeFilter === 'All' ? routes : routes.filter(r => r.themes.includes(activeFilter));
+
+            return (
+                <div className="min-h-screen text-slate-800">
+                    {/* Header */}
+                    <header className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 ${scrolled ? 'bg-slate-900/95 backdrop-blur-md shadow-xl h-16' : 'bg-slate-900 h-24'}`}>
+                        <div className="max-w-7xl mx-auto px-6 h-full flex items-center justify-between">
+                            <div className="flex items-center gap-4 cursor-pointer" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+                                <div className="flex flex-col">
+                                    <div className="flex items-end gap-2">
+                                        <span className="font-black text-2xl text-white italic tracking-tighter uppercase leading-none">TOKYO <span className="text-orange-500">RUNNING.</span></span>
+                                        <span className="bg-orange-600 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider mb-0.5 animate-pulse">BETA</span>
+                                    </div>
+                                    <span className="text-[12px] font-black text-orange-500 tracking-widest mt-1 uppercase opacity-95">{t.heroSub}</span>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className="hidden sm:flex bg-white/5 p-1 rounded-full border border-white/10">
+                                    <button onClick={() => setLang('ko')} className={`px-4 py-1.5 text-[10px] font-black rounded-full ${lang === 'ko' ? 'bg-orange-600 text-white' : 'text-slate-400'}`}>KOR</button>
+                                    <button onClick={() => setLang('ja')} className={`px-4 py-1.5 text-[10px] font-black rounded-full ${lang === 'ja' ? 'bg-orange-600 text-white' : 'text-slate-400'}`}>JPN</button>
+                                </div>
+                                <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="p-3 text-white bg-white/5 hover:bg-orange-600 border border-white/10 rounded-2xl transition-all outline-none shadow-inner">
+                                    <Icon name={isMenuOpen ? "x" : "menu"} />
+                                </button>
+                            </div>
+                            {isMenuOpen && (
+                                <div className="absolute top-full right-6 w-60 bg-slate-900 border border-slate-800 shadow-2xl rounded-[2rem] py-6 mt-3 flex flex-col z-[200] animate-in fade-in slide-in-from-top-4">
+                                    <div className="sm:hidden flex justify-center gap-2 mb-6 px-6">
+                                        <button onClick={() => setLang('ko')} className="flex-1 py-2 text-[10px] font-black rounded-xl border border-slate-700 text-slate-300">KOREAN</button>
+                                        <button onClick={() => setLang('ja')} className="flex-1 py-2 text-[10px] font-black rounded-xl border border-slate-700 text-slate-300">JAPANESE</button>
+                                    </div>
+                                    <a href="#map-section" onClick={() => setIsMenuOpen(false)} className="px-8 py-4 text-white text-[11px] font-black uppercase flex justify-between">Explore Map <Icon name="map" size={16} /></a>
+                                    <a href="#videos" onClick={() => setIsMenuOpen(false)} className="px-8 py-4 text-white text-[11px] font-black uppercase flex justify-between">Video Archive <Icon name="play" size={16} /></a>
+                                    <div className="h-px bg-slate-800 my-4 mx-8"></div>
+                                    <a href="https://www.youtube.com/channel/UCdOIWYsJzkYiN5f0AmPSy_g" target="_blank" className="px-8 py-4 text-red-500 text-[11px] font-black uppercase flex justify-between">Subscribe <Icon name="youtube" size={16} /></a>
+                                    <button onClick={() => { if (isAdmin) setIsAdmin(false); else setShowLoginModal(true); setIsMenuOpen(false); }} className="px-8 py-4 text-slate-600 text-[10px] font-black uppercase text-left">{isAdmin ? t.adminOff : t.adminOn}</button>
+                                </div>
+                            )}
+                        </div>
+                    </header>
+
+                    <main className="pt-24">
+                        {/* Immersive Full-Width Map */}
+                        <section id="map-section" className="w-full h-[500px] md:h-[650px] bg-slate-900 relative border-b border-slate-200 overflow-hidden flex items-center justify-center">
+                            {mapError ? (
+                                <div className="text-center p-8"><Icon name="alert-triangle" className="text-red-500 mb-4" size={48} /><button onClick={() => { setMapError(''); setGoogleApiKey(''); }} className="px-8 py-3 bg-red-600 text-white font-bold rounded-2xl shadow-lg">Retry</button></div>
+                            ) : isMapLoaded ? (
+                                <div ref={mapRef} className="w-full h-full" />
+                            ) : (
+                                <div className="text-center"><Icon name="map" className="text-slate-700 animate-pulse mb-4" size={64} /><p className="text-xs font-black uppercase text-slate-600 tracking-[0.4em]">{t.mapLoading}</p></div>
+                            )}
+                            <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-slate-950/40 to-transparent pointer-events-none"></div>
+                        </section>
+
+                        {/* Announcement History */}
+                        <section className="max-w-7xl mx-auto px-6 mt-16 mb-16 space-y-4">
+                            <div className="flex flex-col gap-3">
+                                {notices.slice(0, 2).map((notice, index) => (
+                                    <div key={index} className={`bg-white rounded-[2.5rem] p-6 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 shadow-xl border border-slate-100 relative overflow-hidden transition-all duration-300 ${index === 0 ? 'opacity-100 scale-100 ring-2 ring-orange-100 ring-offset-4 ring-offset-slate-50' : 'opacity-60 hover:opacity-100'}`}>
+                                        <div className={`absolute top-0 left-0 w-2 h-full ${index === 0 ? 'bg-orange-600' : 'bg-slate-300'}`}></div>
+                                        <div className={`${index === 0 ? 'bg-orange-600 text-white' : 'bg-slate-200 text-slate-500'} p-4 rounded-3xl shadow-lg shrink-0 w-14 h-14 flex items-center justify-center`}><Icon name="megaphone" size={24} /></div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 mb-1"><span className={`text-[10px] font-black uppercase tracking-widest ${index === 0 ? 'text-orange-600' : 'text-slate-400'}`}>{t.announcement}</span><span className="text-[11px] text-slate-400 font-bold">{formatDateTime(notice.createdAt)}</span>{index === 0 && isNew(notice.createdAt) && <span className="px-1.5 py-0.5 bg-red-600 text-white text-[9px] font-black rounded italic ml-2">NEW</span>}</div>
+                                            <p className={`text-lg sm:text-xl font-black leading-tight ${index === 0 ? 'text-slate-900' : 'text-slate-600 line-clamp-1'}`}>{lang === 'ko' ? notice.text_ko : (notice.text_ja || notice.text_ko)}</p>
+                                        </div>
+                                        {isAdmin && index === 0 && <button onClick={() => { setNewNoticeForm({ text_ko: '', text_ja: '' }); setIsAddingNotice(!isAddingNotice); }} className={`p-4 rounded-full transition-colors shrink-0 ${isAddingNotice ? 'bg-orange-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400 hover:text-orange-600 hover:bg-orange-50'}`}><Icon name={isAddingNotice ? "x" : "plus"} size={24} className="pointer-events-none" /></button>}
+                                    </div>
+                                ))}
+                            </div>
+
+                            {isAdmin && isAddingNotice && (
+                                <div className="bg-orange-50 rounded-[2.5rem] p-6 flex flex-col sm:flex-row items-center gap-4 shadow-inner border border-orange-200 animate-in fade-in slide-in-from-top-2 mt-4 relative z-20">
+                                    <div className="flex-1 w-full space-y-4">
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                                                <span className="px-2 py-1 bg-gradient-to-r from-orange-600 to-orange-500 rounded text-[9px] font-black text-white shadow-md">KOR</span>
+                                            </div>
+                                            <input autoFocus type="text" placeholder="새로운 한국어 공지사항을 입력하세요..." value={newNoticeForm.text_ko || ''} onChange={(e) => setNewNoticeForm({ ...newNoticeForm, text_ko: e.target.value })} className="w-full py-4 pr-4 pl-16 bg-white border border-orange-200 rounded-2xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                                        </div>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                                                <span className="px-2 py-1 bg-gradient-to-r from-red-600 to-red-500 rounded text-[9px] font-black text-white shadow-md">JPN</span>
+                                            </div>
+                                            <input type="text" placeholder="새로운 일본어 공지사항을 입력하세요..." value={newNoticeForm.text_ja || ''} onChange={(e) => setNewNoticeForm({ ...newNoticeForm, text_ja: e.target.value })} className="w-full py-4 pr-4 pl-16 bg-white border border-orange-200 rounded-2xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-orange-500" />
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2 w-full sm:w-auto h-full items-end mt-4 sm:mt-0">
+                                        <button onClick={() => setIsAddingNotice(false)} className="px-8 py-5 h-full bg-slate-200 text-slate-500 font-black rounded-2xl flex-1 sm:flex-none uppercase text-sm hover:bg-slate-300 transition-colors">Cancel</button>
+                                        <button onClick={async () => {
+                                            if (!newNoticeForm.text_ko.trim()) return;
+                                            const newNotice = { text_ko: newNoticeForm.text_ko, text_ja: newNoticeForm.text_ja, createdAt: new Date().toISOString() };
+                                            const updatedNotices = [newNotice, ...notices].slice(0, 10);
+                                            await db.doc(SETTINGS_PATH).set({ notices: updatedNotices }, { merge: true });
+                                            setIsAddingNotice(false);
+                                            setNewNoticeForm({ text_ko: '', text_ja: '' });
+                                        }} className="px-10 py-5 h-full bg-orange-600 text-white font-black rounded-2xl shadow-lg flex-1 sm:flex-none uppercase text-sm hover:bg-orange-700 transition-colors">Register Notice</button>
+                                    </div>
+                                </div>
+                            )}
+                        </section>
+
+                        {/* Admin Tools */}
+                        {isAdmin && (
+                            <section className="max-w-7xl mx-auto px-6 pb-24 animate-in fade-in slide-in-from-top-4">
+                                {!googleApiKey && (
+                                    <div className="bg-orange-600 text-white rounded-[3rem] p-10 mb-10 flex flex-col md:flex-row gap-8 items-center justify-between shadow-2xl">
+                                        <div className="text-center md:text-left"><h2 className="text-3xl font-black italic tracking-tighter mb-2 uppercase leading-none">Map Key Required</h2><p className="text-sm font-bold opacity-80 italic">지도를 스토리지에 연동하기 위해 한 번만 키를 입력하세요. (DB 자동 저장)</p></div>
+                                        <input type="text" placeholder="ENTER API KEY" onBlur={async (e) => {
+                                            if (e.target.value) {
+                                                await db.doc(SETTINGS_PATH).set({ mapsApiKey: e.target.value }, { merge: true });
+                                                alert("API Key saved to DB!");
+                                            }
+                                        }} className="w-full md:w-1/3 p-5 bg-white/20 border border-white/40 rounded-[2rem] text-white font-black placeholder-white/50 outline-none" />
+                                    </div>
+                                )}
+                                <div className="bg-slate-900 rounded-[3.5rem] p-10 shadow-2xl border border-slate-800">
+                                    <h2 className="text-4xl font-black text-white italic tracking-tighter mb-10 uppercase border-l-8 border-orange-600 pl-6">Register Route</h2>
+                                    <div className="flex flex-col sm:flex-row gap-4 mb-12">
+                                        <input type="text" placeholder="YOUTUBE URL" value={youtubeUrl} onChange={(e) => setYoutubeUrl(e.target.value)} className="flex-1 p-6 bg-slate-800 border border-slate-700 rounded-3xl text-white font-bold outline-none" />
+                                        <button onClick={handleFetchYT} className="px-12 py-6 bg-orange-600 text-white font-black rounded-3xl uppercase italic shadow-xl">Fetch</button>
+                                    </div>
+                                    {newRouteForm.videoId && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10 p-8 bg-slate-800 rounded-3xl border border-slate-700 animate-in fade-in slide-in-from-bottom-8">
+                                            <div className="md:col-span-2 flex items-center justify-between mb-2">
+                                                <h3 className="text-2xl font-black text-white italic tracking-tighter uppercase">Course Details</h3>
+                                                <div className="flex items-center gap-4 bg-slate-900 px-6 py-4 rounded-full shadow-inner border border-slate-700">
+                                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Difficulty</span>
+                                                    <InteractiveStarRating rating={newRouteForm.difficulty} onChange={(r) => setNewRouteForm({ ...newRouteForm, difficulty: r })} />
+                                                </div>
+                                            </div>
+
+                                            {/* Left Col: KOR */}
+                                            <div className="space-y-4">
+                                                <div className="inline-block px-3 py-1 bg-gradient-to-r from-orange-600 to-orange-500 rounded text-[10px] font-black text-white shadow-lg">KOREAN</div>
+                                                <input type="text" placeholder="Title (Korean)" value={newRouteForm.title_ko} onChange={(e) => setNewRouteForm({ ...newRouteForm, title_ko: e.target.value })} className="w-full p-5 bg-slate-900 border border-slate-700 rounded-2xl text-white font-bold outline-none focus:border-orange-500 transition-colors" />
+                                                <input type="text" placeholder="Location e.g. 신주쿠, 도쿄" value={newRouteForm.location_ko} onChange={(e) => setNewRouteForm({ ...newRouteForm, location_ko: e.target.value })} className="w-full p-5 bg-slate-900 border border-slate-700 rounded-2xl text-white font-bold outline-none focus:border-orange-500 transition-colors" />
+                                                <textarea placeholder="Description (Korean)" value={newRouteForm.description_ko} onChange={(e) => setNewRouteForm({ ...newRouteForm, description_ko: e.target.value })} className="w-full p-5 bg-slate-900 border border-slate-700 rounded-2xl text-slate-300 text-sm h-40 leading-relaxed outline-none focus:border-orange-500 transition-colors resize-none"></textarea>
+                                            </div>
+
+                                            {/* Right Col: JPN */}
+                                            <div className="space-y-4">
+                                                <div className="inline-block px-3 py-1 bg-gradient-to-r from-red-600 to-red-500 rounded text-[10px] font-black text-white shadow-lg">JAPANESE</div>
+                                                <input type="text" placeholder="Title (Japanese)" value={newRouteForm.title_ja} onChange={(e) => setNewRouteForm({ ...newRouteForm, title_ja: e.target.value })} className="w-full p-5 bg-slate-900 border border-slate-700 rounded-2xl text-white font-bold outline-none focus:border-red-500 transition-colors" />
+                                                <input type="text" placeholder="Location e.g. 新宿、東京" value={newRouteForm.location_ja} onChange={(e) => setNewRouteForm({ ...newRouteForm, location_ja: e.target.value })} className="w-full p-5 bg-slate-900 border border-slate-700 rounded-2xl text-white font-bold outline-none focus:border-red-500 transition-colors" />
+                                                <textarea placeholder="Description (Japanese)" value={newRouteForm.description_ja} onChange={(e) => setNewRouteForm({ ...newRouteForm, description_ja: e.target.value })} className="w-full p-5 bg-slate-900 border border-slate-700 rounded-2xl text-slate-300 text-sm h-40 leading-relaxed outline-none focus:border-red-500 transition-colors resize-none"></textarea>
+                                            </div>
+
+                                            {/* Bottom Col: Common */}
+                                            <div className="md:col-span-2 grid grid-cols-3 gap-6 border-t border-slate-700 pt-10">
+                                                <div className="col-span-3 lg:col-span-1">
+                                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 ml-2">Total Distance</label>
+                                                    <input type="text" value={newRouteForm.distance} onChange={(e) => setNewRouteForm({ ...newRouteForm, distance: e.target.value })} placeholder="e.g. 5km" className="w-full p-5 bg-slate-900 border border-slate-700 rounded-2xl text-white font-black uppercase tracking-widest outline-none focus:border-orange-500" />
+                                                </div>
+                                                <div className="col-span-3 lg:col-span-2 grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-emerald-600/70 uppercase tracking-widest mb-2 ml-2">Latitude</label>
+                                                        <input type="text" placeholder="Lat" value={newRouteForm.lat} onChange={(e) => setNewRouteForm({ ...newRouteForm, lat: e.target.value })} className="w-full p-5 bg-emerald-950/40 border border-emerald-900 rounded-2xl text-emerald-400 text-center font-bold outline-none focus:border-emerald-500" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-black text-emerald-600/70 uppercase tracking-widest mb-2 ml-2">Longitude</label>
+                                                        <input type="text" placeholder="Lng" value={newRouteForm.lng} onChange={(e) => setNewRouteForm({ ...newRouteForm, lng: e.target.value })} className="w-full p-5 bg-emerald-950/40 border border-emerald-900 rounded-2xl text-emerald-400 text-center font-bold outline-none focus:border-emerald-500" />
+                                                    </div>
+                                                </div>
+                                                <div className="col-span-3 mt-4">
+                                                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 ml-2">Route Themes (Max 3)</label>
+                                                    <div className="flex flex-wrap gap-3 p-6 bg-slate-900 rounded-3xl border border-slate-700">
+                                                        {Object.keys(translations.ko.themes).filter(k => k !== 'All').map(themeKey => {
+                                                            const isSelected = newRouteForm.themes.includes(themeKey);
+                                                            return (
+                                                                <button
+                                                                    key={themeKey}
+                                                                    onClick={() => handleThemeToggle(themeKey)}
+                                                                    className={`px-5 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all shadow-md ${isSelected ? 'bg-orange-600 text-white border border-orange-500 scale-105' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-500 hover:text-white'}`}
+                                                                >
+                                                                    {themeKey}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <button onClick={handleAdd} className="md:col-span-2 mt-6 py-8 bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-500 hover:to-orange-400 text-white font-black rounded-[3rem] text-2xl uppercase italic tracking-tighter shadow-2xl hover:scale-[1.01] active:scale-[0.98] transition-all">Publish Route To DB</button>
+                                        </div>
+                                    )}
+                                </div>
+                            </section>
+                        )}
+
+                        {/* Gallery Section */}
+                        <section id="videos" className="max-w-7xl mx-auto px-6 pb-32">
+                            <div className="flex flex-col lg:flex-row lg:items-end justify-between mb-16 gap-10 border-b-8 border-slate-900 pb-12">
+                                <div><h2 className="text-6xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">{t.allCourses}</h2><p className="text-2xl font-bold text-slate-400 mt-4 tracking-tight">{t.courseSub}</p></div>
+                                <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar">
+                                    {Object.keys(t.themes).map(k => (
+                                        <button key={k} onClick={() => setActiveFilter(k)} className={`px-7 py-3 rounded-full text-[11px] font-black transition-all border-2 whitespace-nowrap uppercase ${activeFilter === k ? 'bg-slate-900 border-slate-900 text-white shadow-2xl scale-105' : 'bg-white text-slate-400 border-slate-100 hover:border-slate-300'}`}>{t.themes[k]}</button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-10 gap-y-16">
+                                {filteredRoutes.map((route) => (
+                                    <div key={route.id} onClick={() => setSelectedRoute(route)} className="group cursor-pointer">
+                                        <div className="relative aspect-[3/4] rounded-[2.5rem] overflow-hidden mb-6 bg-slate-200 shadow-2xl transition-all duration-700 group-hover:-translate-y-4 border border-slate-100">
+                                            <img src={route.thumbnail} className="w-full h-full object-cover group-hover:scale-110 transition duration-1000 grayscale group-hover:grayscale-0" />
+                                            <div className="absolute top-6 left-6 flex flex-col gap-2">
+                                                {route.themes.map(th => <span key={th} className="px-3 py-1 bg-white/95 backdrop-blur text-slate-950 text-[9px] font-black rounded-xl uppercase shadow-xl tracking-widest text-[10px]">#{translations[lang].themes[th]}</span>)}
+                                            </div>
+                                            <div className="absolute inset-0 bg-orange-600/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-500">
+                                                <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center transform scale-50 group-hover:scale-100 transition-all duration-500 shadow-2xl"><Icon name="play" className="text-slate-950 ml-1" /></div>
+                                            </div>
+                                        </div>
+                                        <div className="px-2 space-y-3">
+                                            <div className="flex items-center justify-between text-[11px] font-black text-slate-400 uppercase tracking-[0.2em]"><span>{formatDate(route.date)}</span><span className="text-orange-600 bg-orange-50 px-2 py-0.5 rounded-lg">{route.distance}</span></div>
+                                            <h3 className="text-2xl font-black text-slate-950 group-hover:text-orange-600 transition-colors leading-tight tracking-tighter uppercase">{lang === 'ko' ? route.title_ko : route.title_ja}</h3>
+                                            <div className="flex justify-between items-center"><p className="text-xs text-slate-500 font-bold uppercase tracking-widest flex items-center gap-2"><Icon name="map-pin" size={14} className="text-orange-600" /> {lang === 'ko' ? route.location_ko : route.location_ja}</p><StarRating rating={route.difficulty} size={10} /></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="bg-slate-900 text-white py-24 px-10 border-t-[12px] border-orange-600 text-center">
+                        <div className="max-w-7xl mx-auto flex flex-col items-center gap-12">
+                            <div className="flex flex-col items-center gap-6">
+                                <a href="https://www.youtube.com/channel/UCdOIWYsJzkYiN5f0AmPSy_g" target="_blank" className="w-20 h-20 bg-white/5 rounded-[2rem] flex items-center justify-center hover:bg-red-600 transition-all shadow-2xl border border-white/10 group"><Icon name="youtube" size={32} /></a>
+                                <span className="text-[13px] font-black tracking-[0.3em] text-slate-400 uppercase">{lang === 'ko' ? '도쿄를 달리는 남자' : '東京を走る男'}</span>
+                            </div>
+                            <div className="text-center space-y-4">
+                                <div className="flex items-start justify-center gap-2">
+                                    <h2 className="text-5xl font-black tracking-tighter italic uppercase leading-none">TOKYO <span className="text-orange-600">RUNNING.</span></h2>
+                                    <span className="bg-orange-600 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-md tracking-wider animate-pulse pt-1">BETA</span>
+                                </div>
+                                <p className="text-slate-500 font-black text-sm uppercase tracking-[0.4em] opacity-60">도쿄를 달리고 기록합니다</p>
+                            </div>
+                            <div className="w-24 h-px bg-slate-800"></div>
+                            <p className="text-[11px] text-slate-700 font-black tracking-[0.4em] uppercase opacity-50 leading-loose">©도쿄를 달리는 남자 ALL RIGHTS RESERVED.</p>
+                        </div>
+                    </footer>
+
+                    {/* Premium Detail Modal */}
+                    {selectedRoute && (
+                        <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-10 bg-slate-950/95 backdrop-blur-3xl animate-in fade-in duration-500">
+                            <div className="absolute inset-0" onClick={() => setSelectedRoute(null)}></div>
+                            <div className="relative w-full max-w-7xl bg-white rounded-[3rem] sm:rounded-[4rem] overflow-hidden shadow-2xl flex flex-col lg:flex-row max-h-[96vh] sm:max-h-[92vh] border border-white/20 animate-modal">
+                                <button onClick={() => setSelectedRoute(null)} className="absolute top-6 right-6 sm:top-10 sm:right-10 z-50 w-12 h-12 sm:w-16 sm:h-16 bg-white text-slate-950 rounded-full flex items-center justify-center transition-all shadow-2xl border border-slate-100 group outline-none">
+                                    <Icon name="x" size={32} className="group-hover:rotate-90 transition-transform duration-300" />
+                                </button>
+                                <div className="w-full lg:w-3/5 bg-slate-950 relative overflow-hidden group">
+                                    <img src={selectedRoute.thumbnail} className="w-full h-full object-cover opacity-60 transition-transform duration-[6s] group-hover:scale-110" />
+                                    <div className="absolute bottom-8 left-8 sm:bottom-12 sm:left-12 flex gap-10">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-12 h-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20"><Icon name="navigation" className="text-orange-500" /></div>
+                                            <div><p className="text-[10px] font-black text-white/50 uppercase tracking-widest leading-none mb-1">{t.courseStats.dist}</p><p className="text-xl font-black text-white leading-none">{selectedRoute.distance}</p></div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-12 h-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20"><Icon name="gauge" className="text-orange-500" /></div>
+                                            <div><p className="text-[10px] font-black text-white/50 uppercase tracking-widest leading-none mb-1">{t.courseStats.diff}</p><StarRating rating={selectedRoute.difficulty} size={14} /></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="w-full lg:w-2/5 p-12 lg:p-20 overflow-y-auto bg-white flex flex-col border-l border-slate-100">
+                                    <div className="mb-6 sm:mb-10 flex flex-wrap gap-2">{selectedRoute.themes.map(th => <span key={th} className="px-4 py-1.5 bg-slate-900 text-white text-[10px] font-black rounded-xl uppercase tracking-[0.2em] shadow-lg">#{translations[lang].themes[th]}</span>)}</div>
+                                    <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-950 mb-6 leading-[0.85] tracking-tighter uppercase">{lang === 'ko' ? selectedRoute.title_ko : selectedRoute.title_ja}</h2>
+                                    <div className="flex items-center gap-3 text-slate-400 font-black text-sm mb-14 uppercase tracking-[0.3em]"><Icon name="map-pin" size={20} className="text-orange-600" /> {lang === 'ko' ? selectedRoute.location_ko : selectedRoute.location_ja}</div>
+                                    <div className="relative p-12 bg-slate-50 rounded-[3.5rem] mb-16 border border-slate-100 shadow-inner text-orange-500"><p className="text-2xl font-bold text-slate-700 italic leading-tight">"{lang === 'ko' ? selectedRoute.description_ko : selectedRoute.description_ja}"</p></div>
+                                    <div className="mt-auto space-y-8">
+                                        <a href={`https://www.youtube.com/watch?v=${selectedRoute.videoId}`} target="_blank" className="w-full flex items-center justify-center gap-5 py-8 bg-red-600 text-white rounded-[2.5rem] font-black text-2xl uppercase active:scale-95 shadow-2xl italic tracking-tighter">WATCH FULL REPORT</a>
+                                        <div className="pt-12 border-t-2 border-slate-100 text-left">
+                                            <div className="flex items-center justify-between mb-8"><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em]">{t.shareTitle}</h3>{shareMessage && <span className="text-xs text-orange-600 font-black animate-pulse uppercase tracking-widest">{shareMessage}</span>}</div>
+                                            <div className="flex gap-4">
+                                                <button onClick={handleCopyLink} className="flex-1 flex items-center justify-center gap-4 py-6 bg-slate-100 text-slate-950 rounded-[2.5rem] text-[11px] font-black uppercase tracking-[0.2em] transition-all hover:bg-slate-200"><Icon name="link" size={20} className="text-orange-500" /> {t.copyLink}</button>
+                                                <a href={`https://twitter.com/intent/tweet?url=${encodeURIComponent(window.location.href)}&text=${encodeURIComponent(`[TOKYO RUNNING] ${lang === 'ko' ? selectedRoute.title_ko : selectedRoute.title_ja}`)}`} target="_blank" className="flex items-center justify-center w-24 h-24 bg-[#1DA1F2] text-white rounded-[2.5rem] hover:bg-[#1a8cd8] shadow-2xl active:rotate-12 transition-all"><Icon name="twitter" size={28} fill="currentColor" /></a>
+                                                <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`} target="_blank" className="flex items-center justify-center w-24 h-24 bg-[#1877F2] text-white rounded-[2.5rem] hover:opacity-90 shadow-2xl transition-all"><Icon name="facebook" size={28} fill="currentColor" /></a>
+                                                <a href={`https://www.threads.net/intent/post?text=${encodeURIComponent(`[TOKYO RUNNING] ${lang === 'ko' ? selectedRoute.title_ko : selectedRoute.title_ja}\n${window.location.href}`)}`} target="_blank" className="flex items-center justify-center w-24 h-24 bg-black text-white rounded-[2.5rem] hover:opacity-80 shadow-2xl border border-white/10 group transition-all">
+                                                    <svg viewBox="0 0 24 24" className="w-8 h-8 fill-current group-hover:scale-110 transition-transform"><path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm3.328 12.852c-.66.66-1.572 1.026-2.584 1.026-1.572 0-2.85-1.12-2.85-2.5 0-1.38 1.278-2.5 2.85-2.5.588 0 1.134.156 1.584.426.33.204.6.492.798.834.198.342.312.738.312 1.152 0 .09-.006.18-.018.27-.012.09-.03.18-.054.27-.15.54-.486 1.008-.948 1.326-.462.318-1.026.492-1.632.492-1.2 0-2.202-.756-2.616-1.8-.06-.15-.102-.312-.132-.48a3.34 3.34 0 01-.042-.51c0-1.842 1.494-3.33 3.336-3.33 1.038 0 1.968.474 2.58 1.218.156.192.282.408.378.636.096.228.15.474.15.726 0 1.122-.906 2.028-2.022 2.028a2.02 2.02 0 01-1.428-.594c-.114-.114-.216-.246-.3-.39-.084-.144-.144-.3-.18-.462-.036-.162-.054-.33-.054-.504 0-.744.606-1.35 1.35-1.35.342 0 .654.126.894.336.24.21.414.498.486.828l.006.012c.006.03.012.06.012.09 0 .156-.126.282-.282.282s-.282-.126-.282-.282l-.006-.036c-.036-.168-.138-.306-.27-.402-.132-.096-.3-.156-.48-.156-.414 0-.75.336-.75.75 0 .09.012.18.03.27.018.09.048.18.09.264.198.42.63.714 1.128.714.756 0 1.368-.612 1.368-1.368 0-.132-.018-.258-.054-.384-.036-.126-.096-.246-.174-.348-.372-.498-.954-.822-1.614-.822-1.128 0-2.046.918-2.046 2.046 0 .066.006.132.012.198.006.066.018.132.036.198.246.852 1.026 1.482 1.962 1.482.438 0 .84-.126 1.176-.348.336-.222.582-.546.696-.924.012-.042.024-.084.03-.126.006-.042.006-.084.006-.126 0-.216-.066-.42-.186-.588-.12-.168-.288-.288-.48-.348-.288-.09-.594-.138-.912-.138-2.046 0-3.708 1.662-3.708 3.708 0 .156.012.312.03.468.018.156.048.312.09.462.63 2.166 2.634 3.75 5.01 3.75 1.74 0 3.288-.84 4.26-2.124.234-.306.42-.642.552-.996.132-.354.198-.732.198-1.122 0-2.31-1.122-4.362-2.856-5.634l-.018-.012z" /></svg>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Admin Login Modal */}
+                    {showLoginModal && (
+                        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300">
+                            <div className="absolute inset-0" onClick={() => setShowLoginModal(false)}></div>
+                            <form onSubmit={handleLogin} className="relative w-full max-w-md bg-white rounded-[3rem] p-10 shadow-2xl border border-slate-100 flex flex-col items-center animate-in zoom-in-95 duration-300">
+                                <div className="w-20 h-20 bg-orange-100 text-orange-600 rounded-3xl flex items-center justify-center mb-6"><Icon name="lock" size={32} /></div>
+                                <h2 className="text-3xl font-black text-slate-900 uppercase italic mb-2 leading-none">Admin Login</h2>
+                                <p className="text-sm text-slate-500 font-bold mb-8 italic">관리자 대시보드 권한 인증</p>
+                                <div className="w-full space-y-4 mb-8">
+                                    <input type="email" required value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:border-orange-500 transition-all shadow-inner text-slate-950" placeholder="Email" />
+                                    <input type="password" required value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:border-orange-500 transition-all shadow-inner text-slate-950" placeholder="Password" />
+                                    {loginError && <p className="text-xs text-red-500 font-black uppercase tracking-widest">{loginError}</p>}
+                                </div>
+                                <button type="submit" className="w-full py-5 bg-slate-900 text-white font-black rounded-3xl text-lg uppercase italic tracking-tighter shadow-2xl active:scale-95 transition-all">Authorize Access</button>
+                                <button type="button" onClick={() => setShowLoginModal(false)} className="mt-4 text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Cancel</button>
+                            </form>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
