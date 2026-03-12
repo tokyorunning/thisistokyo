@@ -363,20 +363,27 @@ const handleLogin = async (e) => {
             };
 
             const handleFetchYT = async () => {
-                if (!googleApiKey) return alert("API Key Required");
-                setIsFetchingInfo(true);
-                try {
-                    const vid = youtubeUrl.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/)?.[1];
-                    const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${vid}&key=${googleApiKey}`);
-                    const data = await res.json();
-                    const snippet = data.items[0].snippet;
-                    const desc = snippet.description;
-                    const coord = desc.match(/Coordinates:\s*(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)/i);
-                    const dist = desc.match(/Distance:\s*([\d.]+\s*(?:km|m)?)/i);
-                    const loc = desc.match(/Location:\s*(.+)/i);
-                    setNewRouteForm({ ...newRouteForm, title_ko: snippet.title, title_ja: snippet.title, description_ko: desc, description_ja: desc, lat: coord?.[1] || "", lng: coord?.[3] || "", distance: dist?.[1] || "", location_ko: loc?.[1]?.trim() || "", location_ja: loc?.[1]?.trim() || "", videoId: vid, thumbnail: snippet.thumbnails?.high?.url });
-                } catch (e) { alert("Fetch Fail"); } finally { setIsFetchingInfo(false); }
-            };
+    if (!googleApiKey) return alert("API Key Required");
+    const vid = youtubeUrl.match(/(?:v=|\/)([0-9A-Za-z_-]{11})/)?.[1];
+    if (!vid) return alert("올바른 YouTube URL을 입력해주세요.");
+    setIsFetchingInfo(true);
+    try {
+        const res = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${vid}&key=${googleApiKey}`);
+        const data = await res.json();
+        if (!data.items || data.items.length === 0) return alert("영상을 찾을 수 없습니다. URL을 다시 확인해주세요.");
+        const snippet = data.items[0].snippet;
+        const desc = snippet.description || "";
+        const coord = desc.match(/Coordinates:\s*(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)/i);
+        const dist = desc.match(/Distance:\s*([\d.]+\s*(?:km|m)?)/i);
+        const loc = desc.match(/Location:\s*(.+)/i);
+        setNewRouteForm({ ...newRouteForm, title_ko: snippet.title || "", title_ja: snippet.title || "", description_ko: desc, description_ja: desc, lat: coord?.[1] || "", lng: coord?.[3] || "", distance: dist?.[1] || "", location_ko: loc?.[1]?.trim() || "", location_ja: loc?.[1]?.trim() || "", videoId: vid, thumbnail: snippet.thumbnails?.high?.url || "" });
+    } catch (e) {
+        alert("정보를 가져오는 데 실패했습니다. 잠시 후 다시 시도해주세요.");
+        console.error("YouTube Fetch Error:", e);
+    } finally {
+        setIsFetchingInfo(false);
+    }
+};
 
             const handleThemeToggle = (themeKey) => {
                 const currentThemes = newRouteForm.themes;
