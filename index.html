@@ -405,7 +405,7 @@ const handleLogin = async (e) => {
                 return `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
             };
             const isNew = (iso) => (new Date() - new Date(iso)) / 86400000 <= 3;
-            const filteredRoutes = activeFilter === 'All' ? routes : routes.filter(r => r.themes.includes(activeFilter));
+const filteredRoutes = activeFilter === 'All' ? routes : routes.filter(r => (r.themes || []).includes(activeFilter));
 
             return (
                 <div className="min-h-screen text-slate-800">
