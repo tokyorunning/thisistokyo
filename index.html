@@ -329,28 +329,16 @@
             }, [newRouteForm.lat, newRouteForm.lng, isMapLoaded]);
 
             // --- Handlers ---
-            const handleLogin = async (e) => {
-                e.preventDefault();
-                try {
-                    const adminDoc = await db.doc(ADMIN_PATH).get();
-                    if (adminDoc.exists) {
-                        const adminData = adminDoc.data();
-                        if (loginEmail === adminData.email && loginPassword === adminData.password) {
-                            setIsAdmin(true); setShowLoginModal(false); setLoginError('');
-                        } else {
-                            setLoginError('ID/PW 불일치');
-                        }
-                    } else {
-                        // DB에 관리자 정보가 없을 경우 초기 세팅
-                        await db.doc(ADMIN_PATH).set({
-                            email: 'admin@thisistokyo.net',
-                            password: 'admin' // 테스트를 위한 초기 비밀번호
-                        });
-                        setLoginError('DB에 관리자 계정이 배포되었습니다. 다시 로그인 해 주세요.');
-                    }
-                } catch (error) {
-                    setLoginError('DB 확인 중 오류가 발생했습니다.');
-                    console.error('Login Error:', error);
+const handleLogin = async (e) => {
+    e.preventDefault();
+    try {
+        await auth.signInWithEmailAndPassword(loginEmail, loginPassword);
+        setIsAdmin(true);
+        setShowLoginModal(false);
+        setLoginError('');
+    } catch (error) {
+        setLoginError('이메일 또는 비밀번호가 올바르지 않습니다.');
+        console.error('Login Error:', error);
                 }
             };
 
